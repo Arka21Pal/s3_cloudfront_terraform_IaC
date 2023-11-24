@@ -66,7 +66,7 @@ resource "aws_s3_object" "website_bucket_upload_object_1" {
 resource "aws_s3_object" "website_bucket_upload_object_2" {
   for_each    = fileset(local.file_path_2, "*")
   bucket      = aws_s3_bucket.website_bucket.bucket
-  key         = "${key2_suffix}/${each.value}"
+  key         = "${var.key2_suffix}/${each.value}"
   source      = "${local.file_path_2}/${each.value}"
   source_hash = filemd5("${local.file_path_2}/${each.value}")
   force_destroy = true
