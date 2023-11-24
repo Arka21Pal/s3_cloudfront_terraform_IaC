@@ -1,0 +1,8 @@
+*
+!main.tf
+!variables.tf
+!outputs.tf
+!providers.tf
+!.terraform.lock.hcl
+!.gitignore
+!README.md
