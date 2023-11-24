@@ -13,12 +13,22 @@ variable file_path_3 {
     default = ""
 }
 
+variable key2_suffix {
+    type = string
+    default = ""
+}
+
+variable key3_suffix {
+    type = string
+    default = ""
+}
+
 variable bucket_name {
     type = string
     default = ""
 }
 
-variable "tags" {
+variable tags {
   type = map(string)
   default = {
     Name = ""
