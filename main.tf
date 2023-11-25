@@ -18,29 +18,8 @@ resource "aws_s3_bucket" "website_bucket" {
 resource "aws_s3_bucket_ownership_controls" "website_bucket_controls" {
   bucket = aws_s3_bucket.website_bucket.id
   rule {
-    object_ownership = "BucketOwnerPreferred"
+    object_ownership = "BucketOwnerEnforced"
   }
-}
-
-# Allow public read ACLs
-resource "aws_s3_bucket_public_access_block" "website_bucket_public_access" {
-  bucket = aws_s3_bucket.website_bucket.id
-
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
-}
-
-# Grant public-read access using an ACL
-resource "aws_s3_bucket_acl" "website_bucket_public_read_acl" {
-  depends_on = [
-    aws_s3_bucket_ownership_controls.website_bucket_controls,
-    aws_s3_bucket_public_access_block.website_bucket_public_access,
-  ]
-
-  bucket = aws_s3_bucket.website_bucket.id
-  acl    = "public-read"
 }
 
 # Disable versioning of objects in bucket
@@ -50,6 +29,15 @@ resource "aws_s3_bucket_versioning" "website_bucket_versioning_status" {
     status = "Disabled"
   }
 }
+
+# ---
+
+resource "aws_cloudfront_origin_access_identity" "website_bucket_OAI" {
+  comment = "OAI for S3 bucket"
+}
+
+# ---
+
 
 # Upload files to S3
 resource "aws_s3_object" "website_bucket_upload_object_1" {
@@ -112,19 +100,6 @@ resource "aws_s3_bucket_cors_configuration" "website_bucket_cors_configuration" 
   }
 }
 
-# S3 bucket website configuration
-resource "aws_s3_bucket_website_configuration" "website_bucket_hosting_configuration" {
-  bucket = aws_s3_bucket.website_bucket.id
-
-  index_document {
-    suffix = "index.html"
-  }
-
-  error_document {
-    key = "error.html"
-  }
-}
-
 # ---
 
 # IAM access policy for S3
@@ -132,7 +107,9 @@ data "aws_iam_policy_document" "website_bucket_IAM_policy" {
   statement {
     principals {
       type = "AWS"
-      identifiers = ["*"]
+      identifiers = ["arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${aws_cloudfront_origin_access_identity.website_bucket_OAI.id}"] # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html#private-content-restricting-access-to-s3-oai (check the format of the OAI)
+#       I have no idea why "iam_arn" from Terraform didn't work for me, but the formatting above works for now.
+#       identifiers = ["aws_cloudfront_origin_access_identity.website_bucket_OAI.iam_arn"]
     }
 
     effect = "Allow"
@@ -162,16 +139,11 @@ resource "aws_cloudfront_distribution" "website_bucket_distribution" {
   enabled = true
 
   origin {
-    origin_id   = local.s3_origin_id
-    domain_name = aws_s3_bucket_website_configuration.website_bucket_hosting_configuration.website_endpoint
+    origin_id = local.s3_origin_id
+    domain_name = aws_s3_bucket.website_bucket.bucket_regional_domain_name
 
-    # https://stackoverflow.com/questions/54097734/why-am-i-getting-a-customoriginconfig-instead-of-s3originconfig
-    # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#custom-origin-config-arguments
-    custom_origin_config {
-      http_port = "80"
-      https_port = "443"
-      origin_protocol_policy = "http-only" # This is because we are using S3's web-hosting features as a back-end, which are HTTP only
-      origin_ssl_protocols = ["TLSv1", "TLSv1.1", "TLSv1.2", "SSLv3"]
+    s3_origin_config {
+      origin_access_identity = aws_cloudfront_origin_access_identity.website_bucket_OAI.cloudfront_access_identity_path
     }
   }
 
