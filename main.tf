@@ -1,6 +1,29 @@
 # Define local variables
 locals {
   s3_origin_id = format("%s-origin", aws_s3_bucket.website_bucket.bucket)
+
+  content_types = {
+    "html" = "text/html",
+    "css"  = "text/css",
+    "js"   = "application/javascript",
+    "jpg"  = "image/jpeg",
+    "png"  = "image/png",
+    "json" = "text/json",
+#     "map" = "application/json+map"
+  }
+
+  keys = fileset(var.file_path, "**")
+  modified_keys = toset([
+    for key in local.keys:
+      key if !(strcontains(key, ".git"))
+  ])
+  objects = {
+    for key in local.modified_keys : key => {
+      content_type = lookup(local.content_types, reverse(split(".", key))[0], "text/html")
+      source       = "${var.file_path}/${key}"
+      extension = reverse(split(".", key))[0]
+    }
+  }
 }
 
 # Define bucket
@@ -35,16 +58,15 @@ resource "aws_cloudfront_origin_access_identity" "website_bucket_OAI" {
 
 # ---
 
-
 # Upload files to S3
 resource "aws_s3_object" "website_bucket_upload_object_1" {
-  for_each    = fileset(var.file_path_1, "**")
+  for_each = local.objects
   bucket      = aws_s3_bucket.website_bucket.bucket
-  key         = each.value
-  source      = "${var.file_path_1}/${each.value}"
-  source_hash = filemd5("${var.file_path_1}/${each.value}")
+  key          = each.key
+  content_type = each.value.content_type
+  source       = each.value.source
+  source_hash  = filemd5(each.value.source)
   force_destroy = true
-  content_type = "text/html"
 }
 
 # Configure SSE with AES256 with default S3 key
@@ -68,8 +90,8 @@ resource "aws_s3_bucket_cors_configuration" "website_bucket_cors_configuration" 
 
   cors_rule {
     allowed_headers = ["*"]
-    allowed_methods = ["GET"]
-    allowed_origins = ["${aws_cloudfront_distribution.website_bucket_distribution.domain_name}"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["${var.subdomain_FQDN}", "${aws_cloudfront_distribution.website_bucket_distribution.domain_name}"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }
@@ -159,7 +181,7 @@ resource "aws_acm_certificate_validation" "subdomain_cert_validation" {
 
 # Create Cloudfront distribution using OAI
 resource "aws_cloudfront_distribution" "website_bucket_distribution" {
-  comment = "This is the definition of the Cloudfront distribution for website_bucket"
+  comment = "This is the Cloudfront distribution for the CS424 project"
 
   enabled = true
 
@@ -174,7 +196,7 @@ resource "aws_cloudfront_distribution" "website_bucket_distribution" {
 
   # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#cache-behavior-arguments
   default_cache_behavior {
-    allowed_methods          = ["GET", "HEAD"]
+    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
     cached_methods           = ["GET", "HEAD"]
     target_origin_id         = local.s3_origin_id
     cache_policy_id          = "b2884449-e4de-46a7-ac36-70bc7f1ddd6d" # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html#managed-cache-caching-optimized-uncompressed
