@@ -11,3 +11,13 @@ output "cloudfront_domain_arn" {
   description = "The domain name of the CloudFront distribution"
   value       = aws_cloudfront_distribution.website_bucket_distribution.arn
 }
+
+output "aws_acm_certificate_domain_validation_options" {
+  description = "The domain validation options for the certificate"
+  value = aws_acm_certificate.subdomain_cert.domain_validation_options
+}
+
+output "aws_acm_certificate_options" {
+  description = "Certificate attributes"
+  value = [aws_acm_certificate.subdomain_cert.domain_name, aws_acm_certificate.subdomain_cert.status, aws_acm_certificate.subdomain_cert.type]
+}
