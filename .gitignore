@@ -1,5 +1,8 @@
-/*
-*.*
+# Ignore everything
 *
 
+# Don't ignore .tf files
 !.*.tf
+
+# But do ignore provider.tf
+provider.tf
