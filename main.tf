@@ -1,9 +1,6 @@
 # Define local variables
 locals {
   s3_origin_id = format("%s-origin", aws_s3_bucket.website_bucket.bucket)
-  file_path_1 = var.file_path_1
-  file_path_2 = var.file_path_2
-  file_path_3 = var.file_path_3
 }
 
 # Define bucket
@@ -41,35 +38,13 @@ resource "aws_cloudfront_origin_access_identity" "website_bucket_OAI" {
 
 # Upload files to S3
 resource "aws_s3_object" "website_bucket_upload_object_1" {
-  for_each    = fileset(local.file_path_1, "*")
+  for_each    = fileset(var.file_path_1, "**")
   bucket      = aws_s3_bucket.website_bucket.bucket
   key         = each.value
-  source      = "${local.file_path_1}/${each.value}"
-  source_hash = filemd5("${local.file_path_1}/${each.value}")
+  source      = "${var.file_path_1}/${each.value}"
+  source_hash = filemd5("${var.file_path_1}/${each.value}")
   force_destroy = true
   content_type = "text/html"
-}
-
-# Upload files to S3
-resource "aws_s3_object" "website_bucket_upload_object_2" {
-  for_each    = fileset(local.file_path_2, "*")
-  bucket      = aws_s3_bucket.website_bucket.bucket
-  key         = "${var.key2_suffix}/${each.value}"
-  source      = "${local.file_path_2}/${each.value}"
-  source_hash = filemd5("${local.file_path_2}/${each.value}")
-  force_destroy = true
-  content_type = "application/json"
-}
-
-# Upload files to S3
-resource "aws_s3_object" "website_bucket_upload_object_3" {
-  for_each    = fileset(local.file_path_3, "*")
-  bucket      = aws_s3_bucket.website_bucket.bucket
-  key         = "${var.key3_suffix}/${each.value}"
-  source      = "${local.file_path_3}/${each.value}"
-  source_hash = filemd5("${local.file_path_3}/${each.value}")
-  force_destroy = true
-  content_type = "application/json"
 }
 
 # Configure SSE with AES256 with default S3 key
@@ -132,6 +107,56 @@ resource "aws_s3_bucket_policy" "website_bucket_IAM_policy" {
 
 # ---
 
+# Fetch the primary zone
+data "aws_route53_zone" "primary" {
+  name = var.route53_public_domain
+  private_zone = false
+}
+
+# Create the CNAME record to redirect to Cloudfront
+resource "aws_route53_record" "subdomain_CNAME_record" {
+    zone_id = data.aws_route53_zone.primary.zone_id
+    name = var.route53_public_subdomain_record
+    type = "CNAME" # I want to use the CNAME because I would like to know how to use this for redirections outside of AWS
+    ttl = "300"
+    records = [aws_cloudfront_distribution.website_bucket_distribution.domain_name]
+}
+
+# Create the certificate
+resource "aws_acm_certificate" "subdomain_cert" {
+    domain_name = var.subdomain_FQDN
+    validation_method = "DNS"
+    lifecycle {
+        create_before_destroy = true
+    }
+    tags = var.tags
+}
+
+# Create redirects to validate certificate for subdomain
+resource "aws_route53_record" "subdomain_cert_validation_records" {
+  for_each = {
+    for dvo in aws_acm_certificate.subdomain_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 120
+  type            = each.value.type
+  zone_id = data.aws_route53_zone.primary.zone_id
+}
+
+# Employ certificate validation
+resource "aws_acm_certificate_validation" "subdomain_cert_validation" {
+  certificate_arn = aws_acm_certificate.subdomain_cert.arn
+  validation_record_fqdns = [for r in aws_route53_record.subdomain_cert_validation_records : r.fqdn]
+}
+
+# ---
+
 # Create Cloudfront distribution using OAI
 resource "aws_cloudfront_distribution" "website_bucket_distribution" {
   comment = "This is the definition of the Cloudfront distribution for website_bucket"
@@ -160,7 +185,7 @@ resource "aws_cloudfront_distribution" "website_bucket_distribution" {
   default_root_object = "index.html"
   is_ipv6_enabled     = false
   price_class         = "PriceClass_100"
-
+  aliases = [var.subdomain_FQDN]
   # Error response for 4XX and 5XX codes
   custom_error_response {
     error_caching_min_ttl = 60
@@ -186,7 +211,10 @@ resource "aws_cloudfront_distribution" "website_bucket_distribution" {
   tags = var.tags
 
   viewer_certificate {
+    acm_certificate_arn = aws_acm_certificate.subdomain_cert.arn
+    ssl_support_method = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
     # https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudfront_distribution#cloudfront_default_certificate
-    cloudfront_default_certificate = true # Change this for custom domain names
+#     cloudfront_default_certificate = true # Change this for custom domain names
   }
 }
