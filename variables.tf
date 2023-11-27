@@ -3,32 +3,12 @@ variable file_path_1 {
     default = ""
 }
 
-variable file_path_2 {
-    type = string
-    default = ""
-}
-
-variable file_path_3 {
-    type = string
-    default = ""
-}
-
-variable key2_suffix {
-    type = string
-    default = ""
-}
-
-variable key3_suffix {
-    type = string
-    default = ""
-}
-
 variable bucket_name {
     type = string
     default = ""
 }
 
-variable "" {
+variable tags {
   type = map(string)
   default = {
     Name = ""
@@ -36,3 +16,20 @@ variable "" {
   }
 }
 
+# ---
+# Domain
+
+variable route53_public_domain {
+  type = string
+  default = ""
+}
+
+variable subdomain_FQDN {
+  type = string
+  default = ""
+}
+
+variable route53_public_subdomain_record {
+  type = string
+  default = ""
+}
