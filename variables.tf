@@ -1,4 +1,4 @@
-variable file_path_1 {
+variable file_path {
     type = string
     default = ""
 }
@@ -20,11 +20,6 @@ variable tags {
 # Domain
 
 variable route53_public_domain {
-  type = string
-  default = ""
-}
-
-variable subdomain_FQDN {
   type = string
   default = ""
 }
