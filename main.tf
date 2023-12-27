@@ -2,6 +2,8 @@
 locals {
   s3_origin_id = format("%s-origin", aws_s3_bucket.website_bucket.bucket)
 
+  subdomain_FQDN = "${var.route53_public_subdomain_record}.${var.route53_public_domain}"
+
   content_types = {
     "html" = "text/html",
     "css"  = "text/css",
@@ -91,7 +93,7 @@ resource "aws_s3_bucket_cors_configuration" "website_bucket_cors_configuration" 
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["GET", "HEAD"]
-    allowed_origins = ["${var.subdomain_FQDN}", "${aws_cloudfront_distribution.website_bucket_distribution.domain_name}"]
+    allowed_origins = ["${local.subdomain_FQDN}", "${aws_cloudfront_distribution.website_bucket_distribution.domain_name}"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
   }
@@ -146,7 +148,7 @@ resource "aws_route53_record" "subdomain_CNAME_record" {
 
 # Create the certificate
 resource "aws_acm_certificate" "subdomain_cert" {
-    domain_name = var.subdomain_FQDN
+    domain_name = local.subdomain_FQDN
     validation_method = "DNS"
     lifecycle {
         create_before_destroy = true
@@ -207,7 +209,7 @@ resource "aws_cloudfront_distribution" "website_bucket_distribution" {
   default_root_object = "index.html"
   is_ipv6_enabled     = false
   price_class         = "PriceClass_100"
-  aliases = [var.subdomain_FQDN]
+  aliases = [local.subdomain_FQDN]
   # Error response for 4XX and 5XX codes
   custom_error_response {
     error_caching_min_ttl = 60
